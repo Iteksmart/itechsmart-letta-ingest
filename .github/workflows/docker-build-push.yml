@@ -21,29 +21,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Derive service + image name
-        id: image
-        run: |
-          SERVICE=$(echo "${{ github.event.repository.name }}" | sed 's/^itechsmart-//')
-          echo "service=${SERVICE}" >> $GITHUB_OUTPUT
-          echo "tag=itechsmart/${SERVICE}:latest" >> $GITHUB_OUTPUT
-
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.image.outputs.tag }}
+          tags: itechsmart/letta-ingest:latest
 
       - name: Trigger deploy webhook
         run: |
-          PAYLOAD=$(printf '{"service":"%s","image":"%s","sha":"%s"}' \
-            "${{ steps.image.outputs.service }}" \
-            "${{ steps.image.outputs.tag }}" \
-            "${{ github.sha }}")
+          PAYLOAD=$(printf '{"service":"suite_letta","image":"itechsmart/letta-ingest:latest","sha":"%s"}' "${{ github.sha }}")
           SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_SECRET }}" | awk '{print $2}')
-          curl -sf -X POST https://hooks.itechsmart.dev/deploy \
-            -H "Content-Type: application/json" \
-            -H "X-Hub-Signature-256: sha256=${SIG}" \
-            -d "$PAYLOAD"
+          STATUS=$(curl -sf -o /tmp/wh.txt -w "%{http_code}"             -X POST "https://hooks.itechsmart.dev/hook"             -H "Content-Type: application/json"             -H "X-Hub-Signature-256: sha256=${SIG}"             -d "$PAYLOAD")
+          cat /tmp/wh.txt
+          [ "$STATUS" = "200" ] || exit 1
+          echo "| deploy service | suite_letta |" >> $GITHUB_STEP_SUMMARY
+          echo "| deploy image | itechsmart/letta-ingest:latest |" >> $GITHUB_STEP_SUMMARY
